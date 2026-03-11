@@ -49,11 +49,17 @@ typedef enum{
 } USART_Mode_t;
 
 typedef enum{
-    USART_STOPBITS_1 = 0,
+    USART_STOPBITS_1 = 0x0,
     USART_STOPBITS_0_5,
     USART_STOPBITS_2,
     USART_STOPBITS_1_5
 } USART_StopBits_t;
+
+typedef enum{
+    USART_OVERSAMPLING_16   = 0,
+    USART_OVERSAMPLING_8   
+} USART_OverSampling_t;
+
 /*-----------------Status-------------------------*/
 typedef enum{
     USART_OK = 0x00U,
@@ -77,6 +83,7 @@ typedef struct{
     USART_Parity_t          Parity;
     USART_StopBits_t        StopBits;
     USART_Mode_t            Mode;
+    USART_OverSampling_t    OverSampling;
 
     USART_State_t           TxState; // TX state
     USART_State_t           RxState; // RX state
@@ -116,7 +123,10 @@ typedef struct{
 #define USART_CR2_CPHA      (1 << 9)
 #define USART_CR2_CPOL      (1 << 10)
 #define USART_CR2_CLKEN     (1 << 11)
+#define USART_CR2_STOP_Pos  12
+#define USART_CR2_STOP_Msk  (3 << USART_CR2_STOP_Pos)
 #define USART_CR2_LINEN     (1 << 14)
+
 // CR3
 #define USART_CR3_EIE       (1 << 0)
 #define USART_CR3_IREN      (1 << 1)

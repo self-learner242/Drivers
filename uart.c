@@ -7,6 +7,10 @@ static USART_Status_t USART_WaitFlag(USART_Handle_t* huart,uint32_t flag, uint32
 
 /*======================================================================================================================*/
 USART_Status_t USART_Init(USART_Handle_t* huart){
+    /* 0. Checking */
+    if (huart == NULL || huart->Instance == NULL) return USART_ERROR;
+    if (huart->Baudrate == 0)                     return USART_ERROR;
+
     USART_TypeDef_t* USARTx = huart->Instance;
 
     /* 1. Disable USART */
@@ -18,27 +22,10 @@ USART_Status_t USART_Init(USART_Handle_t* huart){
         USARTx->CR1 |= USART_CR1_M;
 
     /* 3. Configure Stop Bits */
-    USARTx->CR2 &= ~(0x3U << 12);
-    USARTx->CR2 |= (huart->StopBits << 12);
+    USARTx->CR2 &= ~USART_CR2_STOP_Msk;
+    USARTx->CR2 |= ((huart->StopBits << USART_CR2_STOP_Pos) & USART_CR2_STOP_Msk);
 
-    /* 4. Configure Baudrate */
-    uint32_t pclk = UART_GetPCLK(USARTx);
-    uint32_t divider, mantissa, fraction;
-    if(USARTx->CR1 & USART_CR1_OVER8){
-        divider = 8 * huart->Baudrate;
-        mantissa = pclk / divider;
-        fraction = ((pclk % divider) * 8 + (divider / 2)) / divider;
-        // OVER8 = 1 -> Fraction[3] = 0
-        USARTx->BRR = (mantissa << 4) | (fraction & 0x07);
-    }
-    else{
-        divider = 16 * huart->Baudrate;
-        mantissa = pclk / divider;
-        fraction = ((pclk % divider) * 16 + (divider / 2)) / divider;
-        USARTx->BRR = (mantissa << 4) | (fraction & 0x0F);
-    }
-
-    /* 5. Configure Parity */
+    /* 4. Configure Parity */
     USARTx->CR1 &= ~USART_CR1_PCE;
     USARTx->CR1 &= ~USART_CR1_PS;
 
@@ -48,6 +35,35 @@ USART_Status_t USART_Init(USART_Handle_t* huart){
 
         if(huart->Parity == USART_PARITY_ODD)
             USARTx->CR1 |= USART_CR1_PS;
+    }
+
+    /* 5. Configure Baudrate */
+    USARTx->CR1 &= ~USART_CR1_OVER8;
+    if(huart->OverSampling == USART_OVERSAMPLING_8){
+        USARTx->CR1 |= USART_CR1_OVER8;
+    }
+
+    uint32_t pclk = UART_GetPCLK(USARTx);
+    uint32_t divider, mantissa, fraction;
+    if(USARTx->CR1 & USART_CR1_OVER8){
+        divider = 8 * huart->Baudrate;
+        mantissa = pclk / divider;
+        fraction = (uint32_t)(((uint64_t)(pclk % divider) * 8 + (divider / 2)) / divider);
+        // Fraction can be overflow
+        if(fraction >= 8){ 
+            mantissa++; fraction = 0;
+        }
+        // OVER8 = 1 -> Fraction[3] = 0
+        USARTx->BRR = (mantissa << 4) | (fraction & 0x07);
+    }
+    else{
+        divider = 16 * huart->Baudrate;
+        mantissa = pclk / divider;
+        fraction = (uint32_t)(((uint64_t)(pclk % divider) * 16  + (divider / 2)) / divider);
+        if(fraction >= 16){ 
+            mantissa++; fraction = 0; 
+        }
+        USARTx->BRR = (mantissa << 4) | (fraction & 0x0F);
     }
 
     /* 6. Enable Transmitter & Receiver */
@@ -65,116 +81,101 @@ USART_Status_t USART_Init(USART_Handle_t* huart){
 
 /*-----------------------------------------------POLLING-------------------------------------------------------*/
 USART_Status_t USART_Transmit(USART_Handle_t* huart, uint8_t* pData, uint16_t size, uint32_t timeout){
-    uint8_t     *pdata8bits;
-    uint16_t    *pdata16bits; // Handle 9-bit Data WordLength 
-    uint32_t    tickstart = 0U;
+    uint32_t tickstart;
+    uint32_t data_mask;
 
-    if(pData == NULL || size == 0)
-        return USART_ERROR;
+    if(huart == NULL || huart->Instance == NULL) return USART_ERROR;
+    if(pData == NULL || size == 0)               return USART_ERROR;
+    if(huart->TxState != USART_STATE_READY)      return USART_BUSY;
 
-    if(huart->TxState != USART_STATE_READY)
-        return USART_BUSY;
-
+    USART_TypeDef_t* USARTx = huart->Instance;
     huart->TxState = USART_STATE_BUSY_TX;
 
-    tickstart = SysTick_GetTick();
+    if (huart->Parity == USART_PARITY_NONE)
+        data_mask = (huart->WordLength == USART_WORDLENGTH_9B) ? 0x01FFU : 0x00FFU;
+    else
+        data_mask = (huart->WordLength == USART_WORDLENGTH_9B) ? 0x00FFU : 0x007FU;
 
-    if((huart->WordLength == USART_WORDLENGTH_9B) && huart->Parity == USART_PARITY_NONE){
-        // 9bit data none parity
-        pdata8bits = NULL;
-        pdata16bits =(uint16_t*) pData;
+    if ((huart->WordLength == USART_WORDLENGTH_9B) && (huart->Parity == USART_PARITY_NONE)){
+        uint16_t *pdata16bits = (uint16_t*)pData;
+        while (size > 0U){
+            tickstart = SysTick_GetTick();
+            if (USART_WaitFlag(huart, USART_SR_TXE, tickstart, timeout) != USART_OK) goto timeout_error;
+            uint16_t val;
+            memcpy(&val, pdata16bits, sizeof(val));
+            USARTx->DR = val & data_mask;
+            pdata16bits++;
+            size--;
+        }
     }
     else{
-        pdata8bits = pData;
-        pdata16bits = NULL;
-    }
-
-    while(size > 0U){
-        if(USART_WaitFlag(huart, USART_SR_TXE, tickstart,timeout) != USART_OK){
-            huart->TxState = USART_STATE_READY;
-            return USART_TIMEOUT;
-        }
-
-        if(pdata8bits == NULL){
-            // 9bits, no parity
-            huart->Instance->DR = *pdata16bits & 0x01FFU;
-            pdata16bits++;
-        } 
-        else{
-            if(huart->Parity == USART_PARITY_NONE){
-                huart->Instance->DR = *pdata8bits & 0xFFU;
-            }
-            else{
-                huart->Instance->DR = *pdata8bits & 0x7FU;
-            }
+        uint8_t *pdata8bits = pData;
+        while (size > 0U){
+            tickstart = SysTick_GetTick();
+            if (USART_WaitFlag(huart, USART_SR_TXE, tickstart, timeout) != USART_OK) goto timeout_error;
+            USARTx->DR = *pdata8bits & data_mask;
             pdata8bits++;
+            size--;
         }
-        size--;
     }
 
-    if(USART_WaitFlag(huart, USART_SR_TC, tickstart, timeout) != USART_OK){
-        huart->TxState = USART_STATE_READY;
-        return USART_TIMEOUT;
-    }
+    tickstart = SysTick_GetTick();
+    if (USART_WaitFlag(huart, USART_SR_TC, tickstart, timeout) != USART_OK) goto timeout_error;
 
     huart->TxState = USART_STATE_READY;
-
     return USART_OK;
+
+timeout_error:
+    huart->TxState = USART_STATE_READY;
+    return USART_TIMEOUT;
 }
 
+
 USART_Status_t USART_Receive(USART_Handle_t* huart, uint8_t* pData, uint16_t size, uint32_t timeout){
+    uint32_t tickstart;
+    uint32_t data_mask;
 
-    uint8_t     *pdata8bits;
-    uint16_t    *pdata16bits; // Handle 9-bit Data WordLength
-    uint32_t    tickstart = 0U;
+    if (huart == NULL || huart->Instance == NULL) return USART_ERROR;
+    if (pData == NULL || size == 0U)              return USART_ERROR;
+    if (huart->RxState != USART_STATE_READY)      return USART_BUSY;
 
-    if ((pData == NULL) || (size == 0U)) {
-        return USART_ERROR;
-    }
-
-    /* Check Rx process is not ongoing*/
-    if(huart->RxState != USART_STATE_READY){
-        return USART_BUSY;
-    }
-
+    USART_TypeDef_t* USARTx = huart->Instance;
     huart->RxState = USART_STATE_BUSY_RX;
-    tickstart = SysTick_GetTick();
 
-    if ((huart->WordLength == USART_WORDLENGTH_9B) && huart->Parity == USART_PARITY_NONE){
-        pdata8bits = NULL;
-        pdata16bits = (uint16_t*) pData;
-    }
-    else{
-        pdata8bits = pData;
-        pdata16bits = NULL;
-    }
+    if (huart->Parity == USART_PARITY_NONE)
+        data_mask = (huart->WordLength == USART_WORDLENGTH_9B) ? 0x01FFU : 0x00FFU;
+    else
+        data_mask = (huart->WordLength == USART_WORDLENGTH_9B) ? 0x00FFU : 0x007FU;
 
-    while(size > 0U){
-        if(USART_WaitFlag(huart, USART_SR_RXNE,tickstart, timeout) != USART_OK){
-            huart->RxState = USART_STATE_READY;
-            return USART_TIMEOUT;
-        }
-
-        if(pdata8bits == NULL){
-            // 9bits, no parity
-            *pdata16bits = (uint16_t)(huart->Instance->DR & 0x01FFU);
+    if ((huart->WordLength == USART_WORDLENGTH_9B) && (huart->Parity == USART_PARITY_NONE)) {
+        uint16_t *pdata16bits = (uint16_t*)pData;
+        while (size > 0U) {
+            tickstart = SysTick_GetTick();
+            if (USART_WaitFlag(huart, USART_SR_RXNE, tickstart, timeout) != USART_OK) goto timeout_error;
+            uint16_t val = (uint16_t)(USARTx->DR & data_mask);
+            memcpy(pdata16bits, &val, sizeof(val));
             pdata16bits++;
-        } 
-        else{
-            if(huart->Parity == USART_PARITY_NONE)
-                *pdata8bits = (uint8_t)(huart->Instance->DR & 0xFFU);
-            else
-                *pdata8bits = (uint8_t)(huart->Instance->DR & 0x7FU);
-
-            pdata8bits++;
+            size--;
         }
-        size--;
+    }
+    else {
+        uint8_t *pdata8bits = pData;
+        while (size > 0U) {
+            tickstart = SysTick_GetTick();
+            if (USART_WaitFlag(huart, USART_SR_RXNE, tickstart, timeout) != USART_OK) goto timeout_error;
+            *pdata8bits = (uint8_t)(USARTx->DR & data_mask);
+            pdata8bits++;
+            size--;
+        }
     }
 
     huart->RxState = USART_STATE_READY;
     return USART_OK;
-}
 
+timeout_error:
+    huart->RxState = USART_STATE_READY;
+    return USART_TIMEOUT;
+}
 
 /*-----------------------------------------------INTERRUPT-------------------------------------------------------*/
 USART_Status_t USART_Transmit_IT(USART_Handle_t* huart, uint8_t* pData, uint16_t size){
@@ -187,7 +188,11 @@ USART_Status_t USART_Receive_IT(USART_Handle_t* huart, uint8_t* pData, uint16_t 
 
 /*----------------------------------------------Internal Function Implement---------------------------------------*/
 static USART_Status_t USART_WaitFlag(USART_Handle_t* huart, uint32_t flag, uint32_t tickstart, uint32_t timeout){
-    while((huart->Instance->SR & flag) == 0U){
+    USART_TypeDef_t* USARTx = huart->Instance;
+
+    while((USARTx->SR & flag) == 0U){
+        if(USARTx->SR & (USART_SR_PE | USART_SR_FE | USART_SR_NF | USART_SR_ORE)) return USART_ERROR;
+
         if (timeout != USART_MAX_TIMEOUT) {
             if ((SysTick_GetTick() - tickstart) >= timeout) {
                 return USART_TIMEOUT;
