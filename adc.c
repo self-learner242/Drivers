@@ -1,5 +1,9 @@
 #include "adc.h"
 
+// System Clock Control
+#include "rcc.h"
+#include "systick.h"
+
 void ADC_Init(ADC_Handle_t *hadc){
     // 1. Always DISABLE before config
     hadc->Instance->CR2 &= ~ADC_CR2_ADON;

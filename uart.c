@@ -186,6 +186,17 @@ USART_Status_t USART_Receive_IT(USART_Handle_t* huart, uint8_t* pData, uint16_t 
     return USART_OK;
 }
 
+/*---------------------------------------------DIRECT MEMORY ACCESS----------------------------------------------*/
+// If USART2 -> DMA1 -> Stream 6 -> Channel 4
+// If USART3 -> DMA1 ...
+// If USART 1, 6 -> DMA2
+USART_Status_t USART_Transmit_DMA(USART_Handle_t* huart, uint8_t* pData, uint16_t size){
+
+}
+
+USART_Status_t USART_Receive_DMA(USART_Handle_t* huart, uint8_t* pData, uint16_t size){
+    
+}
 /*----------------------------------------------Internal Function Implement---------------------------------------*/
 static USART_Status_t USART_WaitFlag(USART_Handle_t* huart, uint32_t flag, uint32_t tickstart, uint32_t timeout){
     USART_TypeDef_t* USARTx = huart->Instance;
@@ -201,6 +212,9 @@ static USART_Status_t USART_WaitFlag(USART_Handle_t* huart, uint32_t flag, uint3
     }
     return USART_OK;
 }
+
+
+
 
 // Temp GetPCLK. Phai viet tiep sau
 static uint32_t UART_GetPCLK(USART_TypeDef_t* USARTx)

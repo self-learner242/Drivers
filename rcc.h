@@ -40,6 +40,8 @@ typedef struct{
 #define RCC_AHB1ENR_GPIOGEN     (1U << 6)
 #define RCC_AHB1ENR_GPIOHEN     (1U << 7)
 #define RCC_AHB1ENR_GPIOIEN     (1U << 8)
+#define RCC_AHB1ENR_DMA1EN      (1U << 21)
+#define RCC_AHB1ENR_DMA2EN      (1U << 22)
 
 // APB1ENR
 #define RCC_APB1ENR_TIM2EN      (1 << 0)
@@ -59,6 +61,7 @@ typedef struct{
 #define RCC_APB2ENR_ADC1_EN     (1 << 8)
 #define RCC_APB2ENR_ADC2_EN     (1 << 9)
 #define RCC_APB2ENR_ADC3_EN     (1 << 10)
+#define RCC_APB2ENR_SYSCFG_EN   (1 << 14)
 
 /*--------------------------API------------------------------*/
 void RCC_EnableAHB1Clock(uint32_t mask);

@@ -149,4 +149,8 @@ USART_Status_t USART_Receive(USART_Handle_t* huart, uint8_t* pData, uint16_t siz
 // Interrupt
 USART_Status_t USART_Transmit_IT(USART_Handle_t* huart, uint8_t* pData, uint16_t size);
 USART_Status_t USART_Receive_IT(USART_Handle_t* huart, uint8_t* pData, uint16_t size);
+
+// DMA
+USART_Status_t USART_Transmit_DMA(USART_Handle_t* huart, uint8_t* pData, uint16_t size);
+USART_Status_t USART_Receive_DMA(USART_Handle_t* huart, uint8_t* pData, uint16_t size);
 #endif /*UART_H*/

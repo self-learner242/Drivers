@@ -3,13 +3,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-/*-------------------------Preprocessor-------------------------------------*/
-#define IS_GPIO_PORT(PORT) \
-    ((PORT == GPIOA) || (PORT == GPIOB) || \
-     (PORT == GPIOC) || (PORT == GPIOD) || \
-     (PORT == GPIOE) || (PORT == GPIOF) || \
-     (PORT == GPIOG) || (PORT == GPIOH) || \
-     (PORT == GPIOI))
+
 /*-------------------------Global Variables---------------------------------*/
 typedef uint16_t GPIO_Pin_t;
 
@@ -128,7 +122,6 @@ typedef struct{
 
 // GPIO Init and Deinit
 GPIO_Status_t GPIO_Init(const GPIO_Handle_t* hGPIO);
-// GPIO_Status_t GPIO_DeInit(GPIO_TypeDef_t* Port);
 
 // GPIO Read & Write for Pin
 void GPIO_WritePin(GPIO_TypeDef_t* Port, GPIO_Pin_t Pin, GPIO_PinState_t State);
@@ -140,7 +133,9 @@ void GPIO_WritePort(GPIO_TypeDef_t* Port, uint16_t value);
 uint16_t GPIO_ReadPort(const GPIO_TypeDef_t* Port);
 
 // SetMode
-void GPIO_SetMode(GPIO_TypeDef_t *GPIOx, uint16_t pins, uint32_t mode);
+void GPIO_SetMode(GPIO_TypeDef_t* Port, uint16_t pins, GPIO_Mode_t mode);
 // GPIO Interrupt
 
 #endif
+
+// Best Practice: Enable Clock for GPIO in Abstraction layer( Drivers ) ---> Sua lai ham Init
